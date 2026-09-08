@@ -351,7 +351,7 @@
   <section class="log" id="log"></section>
 
   <footer class="foot">
-    <span class="sync-dot" id="syncdot"></span><span id="storemode">starting…</span> &middot; <span id="count">0</span> entries this day<br>
+    <span id="who"></span><span class="sync-dot" id="syncdot"></span><span id="storemode">starting…</span> &middot; <span id="count">0</span> entries this day<br>
     <button id="export" class="linkbtn" type="button">Export backup</button> &middot;
     <button id="import" class="linkbtn" type="button">Import backup</button> &middot;
     <button id="syncbtn" class="linkbtn" type="button">Sync setup</button>
@@ -388,10 +388,14 @@
       "<rect x='150' y='300' width='60' height='96' rx='14' fill='#fff'/>" +
       "<rect x='226' y='228' width='60' height='168' rx='14' fill='#fff'/>" +
       "<rect x='302' y='150' width='60' height='246' rx='14' fill='#fff'/></svg>");
+    var um = /[?&]user=([^&]+)/.exec(location.search);
+    var who = um ? decodeURIComponent(um[1]) : "";
     var manifest = {
-      name: "Macro Ledger", short_name: "Macros",
+      name: who ? (who.charAt(0).toUpperCase()+who.slice(1) + "'s Macro Ledger") : "Macro Ledger",
+      short_name: who ? (who.charAt(0).toUpperCase()+who.slice(1)) : "Macros",
       description: "A daily food ledger for calories, protein, carbs, and fat.",
-      start_url: ".", scope: ".", display: "standalone", orientation: "portrait",
+      start_url: location.pathname + location.search,
+      scope: ".", display: "standalone", orientation: "portrait",
       background_color: "#FBFAF6", theme_color: "#2F7D57",
       icons: [{ src: ICON, sizes: "192x192 512x512 any", type: "image/svg+xml", purpose: "any maskable" }]
     };
@@ -410,10 +414,27 @@
   /* =======================================================================
      CLOUD SYNC — your Firebase Realtime Database.
      To move or disable sync, change SYNC_URL below (leave "" for local-only).
+
+     PROFILES — each person gets a separate log by adding ?user=NAME to their
+     link, e.g.  .../index.html?user=jeff   and   .../index.html?user=emily
+     Same database, separate compartments (separate entries + targets).
+     No ?user= means the shared/default compartment.
      ======================================================================= */
   var SYNC_URL = "https://macro-ledger-30712-default-rtdb.firebaseio.com";
-  var SYNC_KEY = "macroledger";
+  var SYNC_KEY_BASE = "macroledger";
   /* ======================================================================= */
+
+  function profileSlug(){
+    var raw = qs("user");
+    if(!raw){
+      var m = /[#&]user=([^&]+)/.exec(location.hash || "");
+      raw = m ? decodeURIComponent(m[1]) : "";
+    }
+    return String(raw).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
+  }
+  var PROFILE   = profileSlug();
+  var SYNC_KEY  = SYNC_KEY_BASE + (PROFILE ? "_" + PROFILE : "");
+  var LS_PREFIX = "ml." + (PROFILE ? PROFILE + "." : "");
 
   var MEALS = ["Breakfast","Lunch","Dinner","Snacks"];
   var DEFAULT_TARGETS = {kcal:2000, protein:150, carbs:200, fat:65};
@@ -522,28 +543,30 @@
   }
 
   /* ---------- local mirror (cache + offline + Export backup) ---------- */
+  var DAY_PREFIX = LS_PREFIX + "day.";
+  var TARGETS_KEY = LS_PREFIX + "targets";
   function readLocalMirror(){
     var days = {};
     try{
       for(var i=0;i<localStorage.length;i++){
         var k = localStorage.key(i);
-        if(k && k.indexOf("ml.day.")===0){
-          var date = k.slice(7);
+        if(k && k.indexOf(DAY_PREFIX)===0){
+          var date = k.slice(DAY_PREFIX.length);
           var v = JSON.parse(localStorage.getItem(k));
           days[date] = { entries: (v && v.entries || []).map(normEntry) };
         }
       }
     }catch(e){}
     var targets = null;
-    try{ var t = lsGet("ml.targets"); if(t) targets = JSON.parse(t); }catch(e){}
+    try{ var t = lsGet(TARGETS_KEY); if(t) targets = JSON.parse(t); }catch(e){}
     return { days: days, targets: targets };
   }
   function mirrorToLocal(cache){
     try{
       Object.keys(cache.days).forEach(function(k){
-        lsSet("ml.day."+k, JSON.stringify({date:k, entries:cache.days[k].entries}));
+        lsSet(DAY_PREFIX+k, JSON.stringify({date:k, entries:cache.days[k].entries}));
       });
-      if(cache.targets) lsSet("ml.targets", JSON.stringify(cache.targets));
+      if(cache.targets) lsSet(TARGETS_KEY, JSON.stringify(cache.targets));
     }catch(e){}
   }
   function normalizeBlob(d){
@@ -584,27 +607,35 @@
       init: function(){ return Promise.resolve(); },
       refresh: function(){},
       subscribeDay: function(date, cb){
-        var raw = lsGet("ml.day."+date);
+        var raw = lsGet(DAY_PREFIX+date);
         cb(raw ? {date:date, entries:(JSON.parse(raw).entries||[]).map(normEntry)} : null);
         return function(){};
       },
       saveDay: function(day){
-        if(day.entries.length === 0) lsDel("ml.day."+day.date);
-        else lsSet("ml.day."+day.date, JSON.stringify({date:day.date, entries:day.entries.map(normEntry)}));
+        if(day.entries.length === 0) lsDel(DAY_PREFIX+day.date);
+        else lsSet(DAY_PREFIX+day.date, JSON.stringify({date:day.date, entries:day.entries.map(normEntry)}));
         return Promise.resolve();
       },
       subscribeTargets: function(cb){
-        var raw = lsGet("ml.targets");
+        var raw = lsGet(TARGETS_KEY);
         cb(raw ? JSON.parse(raw) : null);
         return function(){};
       },
-      saveTargets: function(t){ lsSet("ml.targets", JSON.stringify(t)); return Promise.resolve(); },
+      saveTargets: function(t){ lsSet(TARGETS_KEY, JSON.stringify(t)); return Promise.resolve(); },
+      importAll: function(days, targets){
+        Object.keys(days).forEach(function(dt){
+          if(days[dt] && days[dt].length)
+            lsSet(DAY_PREFIX+dt, JSON.stringify({date:dt, entries:days[dt]}));
+        });
+        if(targets) lsSet(TARGETS_KEY, JSON.stringify(targets));
+        return Promise.resolve();
+      },
       recent: function(){
         var days = [];
         try{
           for(var i=0;i<localStorage.length;i++){
             var k = localStorage.key(i);
-            if(k && k.indexOf("ml.day.")===0) days.push(JSON.parse(localStorage.getItem(k)));
+            if(k && k.indexOf(DAY_PREFIX)===0) days.push(JSON.parse(localStorage.getItem(k)));
           }
         }catch(e){}
         days.sort(function(a,b){ return (a.date<b.date)?1:-1; });
@@ -693,6 +724,13 @@
         return function(){ targetCbs = targetCbs.filter(function(f){ return f!==cb; }); };
       },
       saveTargets: function(t){ cache.targets = t; return push(); },
+      importAll: function(days, targets){
+        Object.keys(days).forEach(function(dt){
+          if(days[dt] && days[dt].length) cache.days[dt] = { entries: days[dt] };
+        });
+        if(targets) cache.targets = targets;
+        return push();
+      },
       recent: function(){
         var keys = Object.keys(cache.days).sort().reverse().slice(0,21);
         return Promise.resolve(collectRecent(keys.map(function(k){ return cache.days[k]; })));
@@ -748,11 +786,11 @@
     try{
       for(var i=0;i<localStorage.length;i++){
         var k = localStorage.key(i);
-        if(k && k.indexOf("ml.")===0 && k !== "ml.syncurl") data[k] = localStorage.getItem(k);
+        if(k && k.indexOf(LS_PREFIX)===0 && k !== "ml.syncurl" && k !== "ml.theme") data[k] = localStorage.getItem(k);
       }
     }catch(e){}
     if(!Object.keys(data).length){ toast("Nothing logged yet to back up"); return; }
-    var payload = JSON.stringify({app:"macro-ledger", v:1, exportedAt:new Date().toISOString(), data:data}, null, 2);
+    var payload = JSON.stringify({app:"macro-ledger", v:1, profile:PROFILE, exportedAt:new Date().toISOString(), data:data}, null, 2);
     var blob = new Blob([payload], {type:"application/json"});
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
@@ -770,13 +808,24 @@
         d = parsed && parsed.data;
         if(!d || typeof d !== "object") throw 0;
       }catch(e){ toast("That file isn't a Macro Ledger backup"); return; }
-      var n = 0;
+      var days = {}, targets = null, n = 0;
       Object.keys(d).forEach(function(k){
-        if(k.indexOf("ml.") === 0 && typeof d[k] === "string"){ lsSet(k, d[k]); n++; }
+        if(typeof d[k] !== "string") return;
+        var mDay = /(?:^|\.)day\.(\d{4}-\d{2}-\d{2})$/.exec(k);
+        try{
+          if(mDay){ var v = JSON.parse(d[k]); days[mDay[1]] = (v && v.entries || []).map(normEntry); n++; }
+          else if(/(?:^|\.)targets$/.test(k)){ targets = JSON.parse(d[k]); }
+        }catch(e){}
       });
-      if(!n){ toast("Backup had no entries to import"); return; }
-      toast("Imported " + n + " item" + (n===1?"":"s") + " — reloading");
-      setTimeout(function(){ location.reload(); }, 900);
+      if(!n && !targets){ toast("Backup had no entries to import"); return; }
+      Promise.resolve(store.importAll(days, targets)).then(function(){
+        state.userActed = true;
+        if(targets) state.targets = Object.assign({}, DEFAULT_TARGETS, targets);
+        subscribeDay();
+        refreshRecent();
+        render();
+        toast("Imported " + n + " day" + (n===1?"":"s") + (targets ? " + targets" : ""));
+      }).catch(function(){ toast("Imported to this device — will sync when online"); });
     };
     r.readAsText(file);
   }
@@ -1198,11 +1247,23 @@
     wire();
     render();
 
+    if(PROFILE){
+      var nice = PROFILE.charAt(0).toUpperCase() + PROFILE.slice(1);
+      el("who").textContent = nice + " · ";
+      el("who").style.fontWeight = "600";
+      el("who").style.color = "var(--ink)";
+      document.title = nice + "'s Macro Ledger";
+    }
+
     var syncBase = (SYNC_URL || qs("sync") || lsGet("ml.syncurl") || "").trim();
     if(el("syncfield")) el("syncfield").value = syncBase;
 
     if(syncBase){
       el("localwarn").hidden = true;
+      if(!PROFILE){
+        el("localwarn").hidden = false;
+        el("localwarn").innerHTML = 'Shared log &mdash; no name in your link. Add <b>?user=yourname</b> to the web address for a personal log.';
+      }
       store = remoteStore(syncBase);
       afterStore();
       store.init().catch(function(){
