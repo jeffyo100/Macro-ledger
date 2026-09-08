@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Macro Ledger</title>
+<meta name="description" content="A daily food ledger for calories, protein, carbs, and fat, with barcode scanning.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FBFAF6">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#131612">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Macro Ledger">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%232F7D57'/%3E%3Crect x='150' y='300' width='60' height='96' rx='14' fill='%23fff'/%3E%3Crect x='226' y='228' width='60' height='168' rx='14' fill='%23fff'/%3E%3Crect x='302' y='150' width='60' height='246' rx='14' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%232F7D57'/%3E%3Crect x='150' y='300' width='60' height='96' rx='14' fill='%23fff'/%3E%3Crect x='226' y='228' width='60' height='168' rx='14' fill='%23fff'/%3E%3Crect x='302' y='150' width='60' height='246' rx='14' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --paper:#FBFAF6;
+    --surface:#FFFFFF;
+    --raised:#F0EDE3;
+    --line:#E4E0D1;
+    --ink:#1E241F;
+    --muted:#5E655C;
+    --faint:#8B9086;
+    --accent:#2F7D57;
+    --accent-soft:#E4F0E8;
+    --on-accent:#FFFFFF;
+    --protein:#BE4A38;
+    --carbs:#B98526;
+    --fat:#6E5AA6;
+    --danger:#B23B34;
+    --shadow:0 1px 2px rgba(20,24,20,.04), 0 10px 26px -14px rgba(20,24,20,.16);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --paper:#131612;
+      --surface:#1B1F1A;
+      --raised:#242A21;
+      --line:#333A2F;
+      --ink:#EAEDE6;
+      --muted:#9BA196;
+      --faint:#757C70;
+      --accent:#63BC8C;
+      --accent-soft:#1E2D25;
+      --on-accent:#10231A;
+      --protein:#E1785F;
+      --carbs:#DDB35A;
+      --fat:#A48BD8;
+      --danger:#E0796E;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 30px -16px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --paper:#131612;
+    --surface:#1B1F1A;
+    --raised:#242A21;
+    --line:#333A2F;
+    --ink:#EAEDE6;
+    --muted:#9BA196;
+    --faint:#757C70;
+    --accent:#63BC8C;
+    --accent-soft:#1E2D25;
+    --on-accent:#10231A;
+    --protein:#E1785F;
+    --carbs:#DDB35A;
+    --fat:#A48BD8;
+    --danger:#E0796E;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 30px -16px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  html{background:var(--paper);}
+  body{
+    margin:0;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background:var(--paper);
+    color:var(--ink);
+    font:15px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:clamp(14px,4vw,30px) clamp(14px,4vw,24px) 56px;}
+
+  .num{font-variant-numeric:tabular-nums lining-nums;font-family:"IBM Plex Mono", ui-monospace, monospace;}
+  .big-num{font:600 clamp(2.5rem,7vw,3.3rem)/1 "Fraunces", Georgia, "Times New Roman", serif;font-variant-numeric:tabular-nums lining-nums;letter-spacing:-.01em;}
+  .eyebrow{font:600 11px/1 "IBM Plex Sans", sans-serif;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);margin:0;}
+
+  /* ---- day header ---- */
+  .day{display:flex;align-items:center;gap:6px;margin-bottom:18px;}
+  .day .nav{
+    flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+    background:var(--surface);color:var(--muted);font-size:19px;line-height:1;cursor:pointer;
+  }
+  .day .nav:hover{color:var(--ink);border-color:var(--faint);}
+  .day-label{flex:1 1 auto;text-align:center;min-width:0;}
+  .day-label .wd{font:600 12px/1 "IBM Plex Sans";letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+  .day-label .dt{
+    display:inline-block;margin-top:3px;padding:2px 4px;border:0;background:none;cursor:pointer;
+    font:500 1.25rem/1.2 "Fraunces", Georgia, serif;color:var(--ink);
+  }
+  .day-label .dt .rel{color:var(--accent);}
+  .day .theme{
+    flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+    background:var(--surface);color:var(--muted);font-size:15px;cursor:pointer;
+  }
+  .day .theme:hover{color:var(--ink);}
+
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:clamp(15px,3.6vw,21px);box-shadow:var(--shadow);margin-bottom:16px;
+  }
+
+  /* ---- summary ---- */
+  .cal-block .row-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+  .balance{font:600 13px/1 "IBM Plex Sans";color:var(--accent);white-space:nowrap;}
+  .balance.over{color:var(--danger);}
+  .cal-figure{display:flex;align-items:baseline;gap:10px;margin:6px 0 12px;flex-wrap:wrap;}
+  .cal-figure .of{color:var(--muted);font-size:.95rem;}
+  .track{height:8px;border-radius:6px;background:var(--raised);overflow:hidden;}
+  .track.tall{height:13px;}
+  .fill{height:100%;border-radius:inherit;background:var(--accent);width:0;transition:width .28s ease;}
+  .fill.over{background:var(--danger);}
+  hr{border:0;border-top:1px solid var(--line);margin:17px 0;}
+  .macros{display:flex;flex-direction:column;gap:15px;}
+  .mrow .row-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px;}
+  .mname{font:600 11px/1 "IBM Plex Sans";letter-spacing:.13em;text-transform:uppercase;}
+  .mfig{font-size:12.5px;color:var(--muted);}
+  .mfig .slash{opacity:.5;padding:0 2px;}
+  .mnote{margin-top:5px;text-align:right;font-size:11.5px;color:var(--faint);}
+  .mnote.over{color:var(--danger);}
+  .sum-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap;}
+  .macromath{font-size:11.5px;color:var(--faint);}
+  details.tgt{font-size:13px;}
+  details.tgt summary{
+    list-style:none;cursor:pointer;color:var(--accent);font-weight:600;font-size:12px;
+  }
+  details.tgt summary::-webkit-details-marker{display:none;}
+  .tgt-grid{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px;
+    padding-top:12px;border-top:1px solid var(--line);
+  }
+  .tgt-grid label{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);}
+  .tgt-grid .save{grid-column:1/-1;}
+
+  /* ---- inputs ---- */
+  input, select, button{font:inherit;color:inherit;}
+  input[type=number], input[type=text], select{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+    background:var(--paper);color:var(--ink);
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible{
+    outline:2px solid var(--accent);outline-offset:1px;
+  }
+  input::placeholder{color:var(--faint);}
+
+  .addcard h2{margin:0 0 12px;}
+  .recent{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+  .recent .rlabel{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);align-self:center;margin-right:2px;}
+  .recent button{
+    border:1px solid var(--line);background:var(--paper);border-radius:999px;
+    padding:4px 11px;font-size:12.5px;color:var(--muted);cursor:pointer;
+  }
+  .recent button:hover{color:var(--ink);border-color:var(--accent);}
+  .addgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .addgrid > .name,
+  .addgrid > .scanbtn,
+  .addgrid > .scanpanel,
+  .addgrid > .kcal,
+  .addgrid > .row3,
+  .addgrid > .preview,
+  .addgrid > .submit,
+  .addgrid > .hint { grid-column:1/-1; }
+  .addgrid .servwrap{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);}
+  .addgrid .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .addgrid .row3 label{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);}
+  .scanbtn{
+    padding:10px 14px;border:1px solid var(--accent);border-radius:9px;
+    background:var(--accent-soft);color:var(--accent);font-weight:600;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .scanbtn:hover{filter:brightness(1.04);}
+  .scanbtn svg{width:17px;height:17px;fill:currentColor;}
+  .scanpanel{
+    background:var(--accent-soft);border-radius:9px;padding:10px 12px;
+    font-size:12px;line-height:1.55;color:var(--muted);
+  }
+  .scanpanel b{color:var(--ink);}
+  .scanpanel .basis{color:var(--faint);font-style:italic;}
+  .scanpanel .clearscan{
+    background:none;border:0;color:var(--accent);font:inherit;font-size:12px;
+    text-decoration:underline;cursor:pointer;padding:0;margin-left:6px;
+  }
+  .preview{
+    background:var(--raised);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
+  .preview .pv-strong{font-weight:600;}
+  .preview .pv-serv{color:var(--faint);}
+  .addgrid button.submit{
+    padding:11px 16px;border:0;border-radius:9px;background:var(--accent);color:var(--on-accent);
+    font-weight:600;cursor:pointer;
+  }
+  .addgrid button.submit:hover{filter:brightness(1.05);}
+  .hint{grid-column:1/-1;margin:2px 0 0;font-size:11.5px;color:var(--faint);}
+
+  /* ---- log ---- */
+  .sample-note{
+    display:flex;gap:8px;align-items:baseline;margin-bottom:14px;padding:9px 12px;
+    background:var(--accent-soft);border-radius:9px;font-size:12.5px;color:var(--muted);
+  }
+  .sample-note b{color:var(--ink);font-weight:600;}
+  .meal{margin-bottom:22px;}
+  .meal-head{display:flex;justify-content:space-between;align-items:baseline;
+    border-bottom:2px solid var(--ink);padding-bottom:5px;margin-bottom:2px;}
+  .meal-head h3{margin:0;font:600 12px/1 "IBM Plex Sans";letter-spacing:.16em;text-transform:uppercase;}
+  .meal-sub{font-size:12.5px;color:var(--muted);}
+  ul.entries{list-style:none;margin:0;padding:0;}
+  li.entry{
+    display:grid;grid-template-columns:1fr auto 24px;align-items:center;column-gap:12px;
+    padding:10px 0;border-bottom:1px solid var(--line);
+  }
+  .ename{display:block;font-size:14px;}
+  .eserv{margin-left:6px;font-size:10.5px;color:var(--faint);font-family:"IBM Plex Mono", monospace;}
+  .chips{display:flex;gap:9px;margin-top:3px;font-size:11px;color:var(--faint);}
+  .chips b{font-weight:700;}
+  .ekcal{font-size:13.5px;color:var(--ink);text-align:right;}
+  .ekcal small{color:var(--faint);font-size:10px;margin-left:2px;}
+  button.del{
+    width:24px;height:24px;border-radius:7px;border:1px solid transparent;background:none;
+    color:var(--faint);font-size:15px;line-height:1;cursor:pointer;
+  }
+  button.del:hover{color:var(--danger);border-color:var(--line);background:var(--paper);}
+  .empty{
+    text-align:center;color:var(--muted);font-size:13.5px;padding:34px 12px;
+    border:1px dashed var(--line);border-radius:12px;
+  }
+  .foot{margin-top:26px;text-align:center;font-size:11.5px;color:var(--faint);line-height:1.9;}
+  .foot .linkbtn{
+    background:none;border:0;color:var(--accent);font:inherit;font-size:11.5px;
+    cursor:pointer;padding:0 2px;text-decoration:underline;
+  }
+  .foot .linkbtn:hover{filter:brightness(1.12);}
+
+  .toast{
+    position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);padding:9px 15px;border-radius:9px;
+    font-size:13px;box-shadow:var(--shadow);z-index:60;max-width:88vw;text-align:center;
+  }
+
+  /* ---- camera ---- */
+  .scanview{position:fixed;inset:0;z-index:50;background:#000;overflow:hidden;}
+  .scanview video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .scanview .scrim{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .scan-frame{
+    width:min(80vw,360px);height:44vw;max-height:210px;
+    border:3px solid #fff;border-radius:16px;
+    box-shadow:0 0 0 100vmax rgba(0,0,0,.5);
+  }
+  .scan-hint{
+    position:absolute;bottom:20%;left:0;right:0;text-align:center;padding:0 24px;
+    color:#fff;font-size:14px;text-shadow:0 1px 4px rgba(0,0,0,.9);
+  }
+  .scan-cancel{
+    position:absolute;bottom:calc(7% + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    padding:11px 26px;border-radius:999px;border:0;background:#fff;color:#111;
+    font-weight:600;font-size:15px;cursor:pointer;
+  }
+
+  @media (max-width:460px){
+    li.entry{grid-template-columns:1fr auto;}
+    li.entry button.del{grid-row:1;grid-column:2;justify-self:end;}
+    .ekcal{grid-column:1;text-align:left;margin-top:2px;color:var(--muted);}
+  }
+  @media (prefers-reduced-motion:reduce){ .fill{transition:none;} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="day">
+    <button id="prev" class="nav" aria-label="Previous day" type="button">&lsaquo;</button>
+    <div class="day-label">
+      <div class="wd" id="wd"></div>
+      <button class="dt" id="dt" type="button"></button>
+    </div>
+    <button id="next" class="nav" aria-label="Next day" type="button">&rsaquo;</button>
+    <button id="theme" class="theme" aria-label="Toggle light or dark theme" type="button">&#9681;</button>
+  </header>
+
+  <section class="card summary" id="summary" aria-live="polite"></section>
+
+  <section class="card addcard">
+    <h2 class="eyebrow">Add food</h2>
+    <div class="recent" id="recent" hidden></div>
+    <form id="addform" class="addgrid" autocomplete="off">
+      <input class="name" id="f-name" type="text" placeholder="e.g. Greek yogurt &amp; honey" required aria-label="Food name">
+
+      <button class="scanbtn" id="scan" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h2v14H3zm3 0h1v14H6zm2 0h2v14H8zm3 0h1v14h-1zm3 0h2v14h-2zm3 0h1v14h-1zm2 0h2v14h-2z"/></svg>
+        Scan barcode
+      </button>
+      <div class="scanpanel" id="scanpanel" hidden></div>
+
+      <label class="servwrap">Meal
+        <select id="f-meal" aria-label="Meal">
+          <option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option>
+        </select>
+      </label>
+      <label class="servwrap">Servings eaten
+        <input id="f-serv" type="number" min="0" step="0.25" value="1" inputmode="decimal">
+      </label>
+
+      <input class="kcal" id="f-kcal" type="number" min="0" step="1" inputmode="numeric" placeholder="Calories per serving" aria-label="Calories per serving">
+      <div class="row3">
+        <label>Protein<input id="f-p" type="number" min="0" step="0.1" inputmode="decimal" placeholder="g / serving"></label>
+        <label>Carbs<input id="f-c" type="number" min="0" step="0.1" inputmode="decimal" placeholder="g / serving"></label>
+        <label>Fat<input id="f-f" type="number" min="0" step="0.1" inputmode="decimal" placeholder="g / serving"></label>
+      </div>
+
+      <div class="preview" id="preview" hidden></div>
+      <button class="submit" type="submit">Add to ledger</button>
+      <p class="hint">Enter amounts <b>per serving</b>; &ldquo;servings eaten&rdquo; multiplies them into today&rsquo;s total. Leave calories blank to estimate from macros (4&nbsp;&middot;&nbsp;4&nbsp;&middot;&nbsp;9).</p>
+    </form>
+  </section>
+
+  <section class="log" id="log"></section>
+
+  <footer class="foot">
+    Saved <span id="storemode">on this device</span> &middot; <span id="count">0</span> entries this day<br>
+    <button id="export" class="linkbtn" type="button">Export backup</button> &middot;
+    <button id="import" class="linkbtn" type="button">Import backup</button>
+    <input id="importfile" type="file" accept="application/json,.json" hidden>
+  </footer>
+</div>
+
+<div id="scanview" class="scanview" hidden>
+  <video id="scanvideo" playsinline muted></video>
+  <div class="scrim">
+    <div class="scan-frame"></div>
+    <p class="scan-hint">Line the barcode up inside the box</p>
+    <button id="scancancel" class="scan-cancel" type="button">Cancel</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* ---- installable-app wiring (manifest + icon, generated so the file stays self-contained) ---- */
+(function(){
+  try{
+    var ICON = "data:image/svg+xml," + encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>" +
+      "<rect width='512' height='512' rx='112' fill='#2F7D57'/>" +
+      "<rect x='150' y='300' width='60' height='96' rx='14' fill='#fff'/>" +
+      "<rect x='226' y='228' width='60' height='168' rx='14' fill='#fff'/>" +
+      "<rect x='302' y='150' width='60' height='246' rx='14' fill='#fff'/></svg>");
+    var manifest = {
+      name: "Macro Ledger", short_name: "Macros",
+      description: "A daily food ledger for calories, protein, carbs, and fat.",
+      start_url: ".", scope: ".", display: "standalone", orientation: "portrait",
+      background_color: "#FBFAF6", theme_color: "#2F7D57",
+      icons: [{ src: ICON, sizes: "192x192 512x512 any", type: "image/svg+xml", purpose: "any maskable" }]
+    };
+    var blob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+    var link = document.createElement("link");
+    link.rel = "manifest"; link.href = URL.createObjectURL(blob);
+    document.head.appendChild(link);
+  }catch(e){ /* the app runs regardless */ }
+})();
+</script>
+
+<script>
+(function(){
+  "use strict";
+  var MEALS = ["Breakfast","Lunch","Dinner","Snacks"];
+  var DEFAULT_TARGETS = {kcal:2000, protein:150, carbs:200, fat:65};
+  var ZXING_URL = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
+  var OFF_API = "https://world.openfoodfacts.org/api/v2/product/";
+  var SAMPLE = {entries:[
+    {id:"s1", name:"Greek yogurt & honey",       meal:"Breakfast", kcal:210, protein:18, carbs:24, fat:4,  servings:1},
+    {id:"s2", name:"Oatmeal with blueberries",   meal:"Breakfast", kcal:290, protein:8,  carbs:54, fat:6,  servings:1},
+    {id:"s3", name:"Chicken & rice bowl",        meal:"Lunch",     kcal:540, protein:42, carbs:60, fat:14, servings:1},
+    {id:"s4", name:"Apple",                      meal:"Snacks",    kcal:95,  protein:0,  carbs:25, fat:0,  servings:1}
+  ]};
+
+  var state = {
+    date: todayStr(),
+    day: null,
+    targets: Object.assign({}, DEFAULT_TARGETS),
+    recent: [],
+    userActed: false
+  };
+  var store = null, unsubDay = null, unsubTargets = null;
+  var scan = { stream:null, timer:null, zxing:null, busy:false };
+
+  /* ---------- date helpers ---------- */
+  function pad(n){ return (n<10?"0":"")+n; }
+  function fmt(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function todayStr(){ return fmt(new Date()); }
+  function shift(str, delta){
+    var p = str.split("-").map(Number);
+    var d = new Date(p[0], p[1]-1, p[2]); d.setDate(d.getDate()+delta); return fmt(d);
+  }
+  function prettyDate(str){
+    var p = str.split("-").map(Number);
+    var d = new Date(p[0], p[1]-1, p[2]);
+    var t = todayStr(), rel = "";
+    if(str===t) rel = "Today";
+    else if(str===shift(t,-1)) rel = "Yesterday";
+    else if(str===shift(t,1)) rel = "Tomorrow";
+    return {
+      wd: d.toLocaleDateString(undefined,{weekday:"long"}),
+      md: d.toLocaleDateString(undefined,{month:"long", day:"numeric"}),
+      rel: rel
+    };
+  }
+
+  /* ---------- misc helpers ---------- */
+  function rid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function num(x){ x = Math.round(Number(x)||0); return x.toLocaleString(); }
+  function grams(x){ x = Math.round((Number(x)||0)*10)/10; return x.toLocaleString(); }
+  function round1(x){ x = Number(x)||0; return Math.round(x*10)/10; }
+  function trimNum(x){ return String(Math.round((Number(x)||0)*100)/100); }
+  function clampNum(x){ x = Number(x); return isFinite(x) && x>0 ? Math.round(x*10)/10 : 0; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+  function el(id){ return document.getElementById(id); }
+  function toast(msg){
+    var t = el("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.hidden = true; }, 3000);
+  }
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+
+  function normEntry(e){
+    var s = Number(e.servings);
+    return {
+      id: e.id || rid(),
+      name: String(e.name||"").slice(0,120),
+      meal: MEALS.indexOf(e.meal)>=0 ? e.meal : "Snacks",
+      kcal: Math.round(Number(e.kcal)||0),
+      protein: clampNum(e.protein),
+      carbs: clampNum(e.carbs),
+      fat: clampNum(e.fat),
+      servings: isFinite(s) && s>0 ? Math.round(s*100)/100 : 1
+    };
+  }
+  function normDay(data, date){
+    var entries = (data && Array.isArray(data.entries)) ? data.entries.map(normEntry) : [];
+    return {date:date, entries:entries};
+  }
+  function totals(entries){
+    return entries.reduce(function(a,e){
+      a.kcal+=e.kcal; a.protein+=e.protein; a.carbs+=e.carbs; a.fat+=e.fat; return a;
+    }, {kcal:0,protein:0,carbs:0,fat:0});
+  }
+
+  /* ---------- sample state ---------- */
+  function showingSample(){
+    return !state.userActed
+      && state.date === todayStr()
+      && (!state.day || state.day.entries.length === 0);
+  }
+  function currentEntries(){
+    if(showingSample()) return SAMPLE.entries.map(normEntry);
+    return (state.day && state.day.date === state.date) ? state.day.entries : [];
+  }
+  function workingDay(){
+    if(state.day && state.day.date === state.date)
+      return {date:state.date, entries:state.day.entries.slice()};
+    return {date:state.date, entries:[]};
+  }
+
+  /* ---------- storage (this device) ---------- */
+  function localStore(){
+    return {
+      mode: "on this device",
+      subscribeDay: function(date, cb){
+        var raw = lsGet("ml.day."+date);
+        cb(raw ? normDay(JSON.parse(raw), date) : null);
+        return function(){};
+      },
+      saveDay: function(day){
+        if(day.entries.length === 0) lsDel("ml.day."+day.date);
+        else lsSet("ml.day."+day.date, JSON.stringify({date:day.date, entries:day.entries.map(normEntry)}));
+        return Promise.resolve();
+      },
+      subscribeTargets: function(cb){
+        var raw = lsGet("ml.targets");
+        cb(raw ? JSON.parse(raw) : null);
+        return function(){};
+      },
+      saveTargets: function(t){ lsSet("ml.targets", JSON.stringify(t)); return Promise.resolve(); },
+      recent: function(){
+        var days = [];
+        try{
+          for(var i=0;i<localStorage.length;i++){
+            var k = localStorage.key(i);
+            if(k && k.indexOf("ml.day.")===0) days.push(JSON.parse(localStorage.getItem(k)));
+          }
+        }catch(e){}
+        days.sort(function(a,b){ return (a.date<b.date)?1:-1; });
+        return Promise.resolve(collectRecent(days.slice(0,21)));
+      }
+    };
+  }
+  function collectRecent(dayDatas){
+    var seen = {}, out = [];
+    for(var i=0;i<dayDatas.length;i++){
+      var es = (dayDatas[i] && dayDatas[i].entries) || [];
+      for(var j=es.length-1;j>=0;j--){
+        var e = normEntry(es[j]);
+        var key = e.name.trim().toLowerCase();
+        if(!key || seen[key]) continue;
+        seen[key] = 1; out.push(e);
+        if(out.length >= 10) return out;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- actions ---------- */
+  function subscribeDay(){
+    if(unsubDay) unsubDay();
+    unsubDay = store.subscribeDay(state.date, function(day){
+      state.day = day || {date:state.date, entries:[]};
+      if(day && day.entries.length) state.userActed = true;
+      render();
+    });
+  }
+  function goToDate(date){
+    state.date = date;
+    if(date !== todayStr()) state.userActed = true;
+    subscribeDay();
+    render();
+  }
+  function addEntry(data){
+    state.userActed = true;
+    var day = workingDay();
+    day.entries.push(normEntry(Object.assign({id:rid()}, data)));
+    state.day = day;
+    render();
+    Promise.resolve(store.saveDay(day)).catch(function(){ toast("Couldn't save — try again"); });
+    refreshRecent();
+  }
+  function deleteEntry(id){
+    var day = workingDay();
+    day.entries = day.entries.filter(function(e){ return e.id !== id; });
+    state.day = day;
+    render();
+    Promise.resolve(store.saveDay(day)).catch(function(){ toast("Couldn't save — try again"); });
+  }
+  function saveTargets(t){
+    state.targets = t;
+    render();
+    Promise.resolve(store.saveTargets(t)).catch(function(){ toast("Couldn't save targets"); });
+  }
+  function refreshRecent(){
+    Promise.resolve(store.recent()).then(function(list){
+      state.recent = list || []; renderRecent();
+    });
+  }
+
+  /* ---------- backup ---------- */
+  function exportBackup(){
+    var data = {};
+    try{
+      for(var i=0;i<localStorage.length;i++){
+        var k = localStorage.key(i);
+        if(k && k.indexOf("ml.")===0) data[k] = localStorage.getItem(k);
+      }
+    }catch(e){}
+    if(!Object.keys(data).length){ toast("Nothing logged yet to back up"); return; }
+    var payload = JSON.stringify({app:"macro-ledger", v:1, exportedAt:new Date().toISOString(), data:data}, null, 2);
+    var blob = new Blob([payload], {type:"application/json"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = "macro-ledger-backup-" + todayStr() + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+    toast("Backup downloaded");
+  }
+  function importBackup(file){
+    var r = new FileReader();
+    r.onload = function(){
+      var d;
+      try{
+        var parsed = JSON.parse(r.result);
+        d = parsed && parsed.data;
+        if(!d || typeof d !== "object") throw 0;
+      }catch(e){ toast("That file isn't a Macro Ledger backup"); return; }
+      var n = 0;
+      Object.keys(d).forEach(function(k){
+        if(k.indexOf("ml.") === 0 && typeof d[k] === "string"){ lsSet(k, d[k]); n++; }
+      });
+      if(!n){ toast("Backup had no entries to import"); return; }
+      state.userActed = true;
+      var st = lsGet("ml.theme"); if(st) document.documentElement.setAttribute("data-theme", st);
+      if(unsubTargets) unsubTargets();
+      unsubTargets = store.subscribeTargets(function(t){
+        state.targets = Object.assign({}, DEFAULT_TARGETS, t || {}); render();
+      });
+      subscribeDay();
+      refreshRecent();
+      render();
+      toast("Imported " + n + " item" + (n===1?"":"s"));
+    };
+    r.readAsText(file);
+  }
+
+  /* ---------- barcode scanning ---------- */
+  function loadScript(src){
+    return new Promise(function(res, rej){
+      var s = document.createElement("script");
+      s.src = src; s.async = true;
+      s.onload = function(){ res(); };
+      s.onerror = function(){ rej(new Error("Couldn't load the scanner library")); };
+      document.head.appendChild(s);
+    });
+  }
+  function scanErr(e){
+    var n = e && e.name;
+    if(n === "NotAllowedError" || n === "SecurityError") return "Camera permission denied — allow it in your browser settings";
+    if(n === "NotFoundError" || n === "OverconstrainedError") return "No usable camera found";
+    if(location.protocol !== "https:" && location.hostname !== "localhost") return "Camera needs the app opened over https";
+    return (e && e.message) ? e.message : "Couldn't start the camera";
+  }
+  function openScanner(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      toast("This browser can't open the camera"); return;
+    }
+    scan.busy = false;
+    el("scanview").hidden = false;
+    var video = el("scanvideo");
+
+    var startNative = function(){
+      var want = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf","codabar"];
+      var mk = function(list){
+        try{ return new window.BarcodeDetector(list && list.length ? {formats:list} : undefined); }
+        catch(e){ return new window.BarcodeDetector(); }
+      };
+      return window.BarcodeDetector.getSupportedFormats().catch(function(){ return []; }).then(function(sup){
+        var list = sup && sup.length ? want.filter(function(f){ return sup.indexOf(f) >= 0; }) : want;
+        var det = mk(list);
+        return navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:"environment" } } }).then(function(stream){
+          scan.stream = stream;
+          video.srcObject = stream;
+          return video.play();
+        }).then(function(){
+          scan.timer = setInterval(function(){
+            if(scan.busy) return;
+            det.detect(video).then(function(codes){
+              if(codes && codes.length && codes[0].rawValue) onBarcode(codes[0].rawValue);
+            }).catch(function(){});
+          }, 240);
+        });
+      });
+    };
+
+    var startZXing = function(){
+      return loadScript(ZXING_URL).then(function(){
+        scan.zxing = new window.ZXing.BrowserMultiFormatReader();
+        scan.zxing.decodeFromConstraints(
+          { video:{ facingMode:{ ideal:"environment" } } }, video,
+          function(result){ if(result && !scan.busy) onBarcode(result.getText()); }
+        ).catch(function(err){ closeScanner(); toast(scanErr(err)); });
+      });
+    };
+
+    var attempt = ("BarcodeDetector" in window) ? startNative() : startZXing();
+    attempt.catch(function(err){
+      if(("BarcodeDetector" in window) && !scan.zxing){
+        // native path failed to start — fall back to the library
+        cleanupStream();
+        startZXing().catch(function(e2){ closeScanner(); toast(scanErr(e2)); });
+      } else {
+        closeScanner(); toast(scanErr(err));
+      }
+    });
+  }
+  function cleanupStream(){
+    if(scan.timer){ clearInterval(scan.timer); scan.timer = null; }
+    if(scan.stream){ scan.stream.getTracks().forEach(function(t){ t.stop(); }); scan.stream = null; }
+  }
+  function closeScanner(){
+    cleanupStream();
+    if(scan.zxing){ try{ scan.zxing.reset(); }catch(e){} scan.zxing = null; }
+    var v = el("scanvideo");
+    try{ v.pause(); }catch(e){}
+    v.srcObject = null;
+    el("scanview").hidden = true;
+  }
+  function onBarcode(raw){
+    if(scan.busy) return;
+    scan.busy = true;
+    var code = String(raw).replace(/\D/g, "");
+    closeScanner();
+    if(code.length < 6){ toast("That didn't scan as a product barcode"); return; }
+    lookupProduct(code);
+  }
+  function lookupProduct(code){
+    toast("Looking up " + code + "…");
+    var url = OFF_API + encodeURIComponent(code) +
+      ".json?fields=product_name,brands,nutriments,serving_size,serving_quantity";
+    fetch(url, { headers:{ "Accept":"application/json" } })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j || j.status !== 1 || !j.product){
+          toast("Not in the food database — type it in below");
+          el("f-name").focus();
+          return;
+        }
+        applyProduct(j.product, code);
+      })
+      .catch(function(){ toast("Lookup failed — check your connection or add it manually"); });
+  }
+  function nutr(n, p, key){
+    var s = n[key + "_serving"];
+    if(typeof s === "number" && isFinite(s)) return s;
+    var h = n[key + "_100g"];
+    if(typeof h === "number" && isFinite(h)){
+      var sq = Number(p.serving_quantity);
+      if(sq > 0) return h * sq / 100;
+      return h;
+    }
+    return 0;
+  }
+  function hasServingData(n, p){
+    return (typeof n["proteins_serving"] === "number") ||
+           (typeof n["fat_serving"] === "number") ||
+           (typeof n["carbohydrates_serving"] === "number") ||
+           (typeof n["energy-kcal_serving"] === "number") ||
+           (Number(p.serving_quantity) > 0);
+  }
+  function applyProduct(p, code){
+    var n = p.nutriments || {};
+    var kcal = nutr(n, p, "energy-kcal");
+    if(!kcal){
+      var kj = nutr(n, p, "energy");
+      if(kj) kcal = kj / 4.184;
+    }
+    var perServing = hasServingData(n, p);
+    var base = {
+      kcal: Math.round(Number(kcal) || 0),
+      protein: round1(nutr(n, p, "proteins")),
+      carbs: round1(nutr(n, p, "carbohydrates")),
+      fat: round1(nutr(n, p, "fat"))
+    };
+
+    var name = [p.brands, p.product_name].filter(Boolean).join(" — ").replace(/\s+/g, " ").trim().slice(0, 120);
+    el("f-name").value = name || ("Item " + code);
+    el("f-kcal").value = base.kcal || "";
+    el("f-p").value = base.protein || "";
+    el("f-c").value = base.carbs || "";
+    el("f-f").value = base.fat || "";
+    el("f-serv").value = 1;
+
+    var sz = p.serving_size ? String(p.serving_size).trim() : "";
+    var basis = perServing
+      ? ("per serving" + (sz ? " (" + esc(sz) + ")" : ""))
+      : "per 100 g — set servings to your amount (1.5 = 150 g)";
+    var panel = el("scanpanel");
+    panel.hidden = false;
+    panel.innerHTML =
+      "<b>" + esc(el("f-name").value) + "</b><br>" +
+      num(base.kcal) + " kcal &middot; " + grams(base.protein) + " g P &middot; " +
+      grams(base.carbs) + " g C &middot; " + grams(base.fat) + " g F " +
+      "<span class=\"basis\">" + basis + "</span>" +
+      "<button type=\"button\" class=\"clearscan\" id=\"clearscan\">clear</button>";
+    el("clearscan").addEventListener("click", clearScanPanel);
+    updatePreview();
+    toast("Loaded — check the numbers, then set servings eaten");
+  }
+  function clearScanPanel(){
+    var panel = el("scanpanel");
+    panel.hidden = true; panel.innerHTML = "";
+    ["f-name","f-kcal","f-p","f-c","f-f"].forEach(function(id){ el(id).value = ""; });
+    el("f-serv").value = 1;
+    updatePreview();
+    el("f-name").focus();
+  }
+
+  /* ---------- add-form preview ---------- */
+  function readForm(){
+    var p = clampNum(el("f-p").value), c = clampNum(el("f-c").value), f = clampNum(el("f-f").value);
+    var kraw = el("f-kcal").value;
+    var kcal = kraw === "" ? Math.round(4*p + 4*c + 9*f) : Math.max(0, Math.round(Number(kraw) || 0));
+    var serv = Number(el("f-serv").value);
+    if(!isFinite(serv) || serv <= 0) serv = 1;
+    return { p:p, c:c, f:f, kcal:kcal, serv:serv };
+  }
+  function updatePreview(){
+    var r = readForm();
+    var box = el("preview");
+    if(!r.kcal && !r.p && !r.c && !r.f){ box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    var m = r.serv;
+    box.innerHTML =
+      "Logs <span class=\"pv-strong\">" + num(r.kcal * m) + " kcal</span> &middot; " +
+      grams(r.p * m) + " g P &middot; " + grams(r.c * m) + " g C &middot; " + grams(r.f * m) + " g F" +
+      (r.serv !== 1 ? " <span class=\"pv-serv\">(" + trimNum(r.serv) + "× serving)</span>" : "");
+  }
+
+  /* ---------- rendering ---------- */
+  function barRow(key, label, val, tgt){
+    var pct = tgt>0 ? Math.min(100, val/tgt*100) : 0;
+    var over = val > tgt;
+    var note = over ? grams(val-tgt)+" g over" : grams(tgt-val)+" g left";
+    return '<div class="mrow">'
+      + '<div class="row-top">'
+        + '<span class="mname" style="color:var(--'+key+')">'+label+'</span>'
+        + '<span class="num mfig">'+grams(val)+' <span class="slash">/</span> '+grams(tgt)+' g</span>'
+      + '</div>'
+      + '<div class="track"><div class="fill" style="width:'+pct.toFixed(1)+'%;background:var(--'+key+')"></div></div>'
+      + '<div class="mnote'+(over?" over":"")+'">'+note+'</div>'
+    + '</div>';
+  }
+
+  function renderSummary(){
+    var t = totals(currentEntries());
+    var tg = state.targets;
+    var calPct = tg.kcal>0 ? Math.min(100, t.kcal/tg.kcal*100) : 0;
+    var calOver = t.kcal > tg.kcal;
+    var macroKcal = 4*t.protein + 4*t.carbs + 9*t.fat;
+
+    el("summary").innerHTML =
+      '<div class="cal-block">'
+        + '<div class="row-top">'
+          + '<span class="eyebrow">Calories</span>'
+          + '<span class="balance'+(calOver?" over":"")+'">'
+            + (calOver ? num(t.kcal-tg.kcal)+" over" : num(tg.kcal-t.kcal)+" left")
+          + '</span>'
+        + '</div>'
+        + '<div class="cal-figure"><span class="big-num">'+num(t.kcal)+'</span>'
+          + '<span class="of">of '+num(tg.kcal)+' kcal</span></div>'
+        + '<div class="track tall"><div class="fill'+(calOver?" over":"")+'" style="width:'+calPct.toFixed(1)+'%"></div></div>'
+      + '</div>'
+      + '<hr>'
+      + '<div class="macros">'
+        + barRow("protein","Protein", t.protein, tg.protein)
+        + barRow("carbs","Carbs", t.carbs, tg.carbs)
+        + barRow("fat","Fat", t.fat, tg.fat)
+      + '</div>'
+      + '<div class="sum-foot">'
+        + '<span class="macromath">Macro math &asymp; '+num(macroKcal)+' kcal</span>'
+        + '<details class="tgt" id="tgtbox">'
+          + '<summary>Edit targets</summary>'
+          + '<div class="tgt-grid">'
+            + tgtInput("kcal","Calories", tg.kcal)
+            + tgtInput("protein","Protein g", tg.protein)
+            + tgtInput("carbs","Carbs g", tg.carbs)
+            + tgtInput("fat","Fat g", tg.fat)
+            + '<button class="save submit" id="tgtsave" type="button">Save targets</button>'
+          + '</div>'
+        + '</details>'
+      + '</div>';
+
+    el("tgtsave").addEventListener("click", function(){
+      saveTargets({
+        kcal:    Math.max(0, Math.round(Number(el("tgt-kcal").value)||0)),
+        protein: clampNum(el("tgt-protein").value),
+        carbs:   clampNum(el("tgt-carbs").value),
+        fat:     clampNum(el("tgt-fat").value)
+      });
+      toast("Targets updated");
+    });
+  }
+  function tgtInput(k, label, val){
+    return '<label>'+label+'<input id="tgt-'+k+'" type="number" min="0" step="'+(k==="kcal"?"10":"1")+'" value="'+val+'"></label>';
+  }
+
+  function renderLog(){
+    var entries = currentEntries();
+    var sample = showingSample();
+    var html = "";
+
+    if(sample){
+      html += '<div class="sample-note"><b>Sample day.</b> Your ledger for today is empty — add a food and this clears.</div>';
+    }
+    if(entries.length === 0 && !sample){
+      var p = prettyDate(state.date);
+      html += '<div class="empty">Nothing logged for '+(p.rel || p.md)+'. Add your first item above.</div>';
+    } else {
+      MEALS.forEach(function(meal){
+        var rows = entries.filter(function(e){ return e.meal === meal; });
+        if(!rows.length) return;
+        var sub = totals(rows);
+        html += '<section class="meal">'
+          + '<div class="meal-head"><h3>'+meal+'</h3><span class="num meal-sub">'+num(sub.kcal)+' kcal</span></div>'
+          + '<ul class="entries">'
+          + rows.map(function(e){ return entryRow(e, sample); }).join("")
+          + '</ul></section>';
+      });
+    }
+    el("log").innerHTML = html;
+
+    el("log").querySelectorAll("button.del").forEach(function(b){
+      b.addEventListener("click", function(){ deleteEntry(b.getAttribute("data-id")); });
+    });
+
+    el("count").textContent = sample ? 0 : entries.length;
+  }
+  function entryRow(e, sample){
+    var chips = '<span class="chips">'
+      + '<span><b style="color:var(--protein)">P</b> '+grams(e.protein)+'</span>'
+      + '<span><b style="color:var(--carbs)">C</b> '+grams(e.carbs)+'</span>'
+      + '<span><b style="color:var(--fat)">F</b> '+grams(e.fat)+'</span>'
+    + '</span>';
+    var serv = (e.servings && e.servings !== 1) ? ' <span class="eserv">'+trimNum(e.servings)+'×</span>' : '';
+    return '<li class="entry">'
+      + '<span class="ecol"><span class="ename">'+esc(e.name)+serv+'</span>'+chips+'</span>'
+      + '<span class="num ekcal">'+num(e.kcal)+'<small>kcal</small></span>'
+      + (sample ? '<span></span>' : '<button class="del" type="button" data-id="'+e.id+'" aria-label="Remove '+esc(e.name)+'">&times;</button>')
+    + '</li>';
+  }
+
+  function renderHeader(){
+    var p = prettyDate(state.date);
+    el("wd").textContent = p.wd;
+    el("dt").innerHTML = esc(p.md) + (p.rel ? ' <span class="rel">&middot; '+p.rel+'</span>' : "");
+  }
+
+  function renderRecent(){
+    var box = el("recent");
+    if(!state.recent.length){ box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = '<span class="rlabel">Recent</span>' + state.recent.map(function(e, i){
+      return '<button type="button" data-i="'+i+'">'+esc(e.name)+'</button>';
+    }).join("");
+    box.querySelectorAll("button").forEach(function(b){
+      b.addEventListener("click", function(){
+        var e = state.recent[+b.getAttribute("data-i")];
+        clearScanPanel();
+        el("f-name").value = e.name;
+        el("f-meal").value = e.meal;
+        el("f-serv").value = 1;
+        el("f-kcal").value = e.kcal || "";
+        el("f-p").value = e.protein || "";
+        el("f-c").value = e.carbs || "";
+        el("f-f").value = e.fat || "";
+        updatePreview();
+        el("f-name").focus();
+      });
+    });
+  }
+
+  function render(){ renderHeader(); renderSummary(); renderLog(); }
+
+  /* ---------- wiring ---------- */
+  function defaultMeal(){
+    var h = new Date().getHours();
+    if(h < 11) return "Breakfast";
+    if(h < 15) return "Lunch";
+    if(h < 21) return "Dinner";
+    return "Snacks";
+  }
+  function wire(){
+    el("prev").addEventListener("click", function(){ goToDate(shift(state.date,-1)); });
+    el("next").addEventListener("click", function(){ goToDate(shift(state.date, 1)); });
+    el("dt").addEventListener("click", function(){ if(state.date!==todayStr()) goToDate(todayStr()); });
+    el("theme").addEventListener("click", function(){
+      var cur = document.documentElement.getAttribute("data-theme")
+        || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var next = cur === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      lsSet("ml.theme", next);
+    });
+
+    el("f-meal").value = defaultMeal();
+    ["f-serv","f-kcal","f-p","f-c","f-f"].forEach(function(id){
+      el(id).addEventListener("input", updatePreview);
+    });
+
+    el("scan").addEventListener("click", openScanner);
+    el("scancancel").addEventListener("click", closeScanner);
+
+    el("addform").addEventListener("submit", function(ev){
+      ev.preventDefault();
+      var name = el("f-name").value.trim();
+      if(!name){ el("f-name").focus(); return; }
+      var r = readForm();
+      var m = r.serv;
+      addEntry({
+        name: name,
+        meal: el("f-meal").value,
+        kcal: Math.round(r.kcal * m),
+        protein: r.p * m,
+        carbs: r.c * m,
+        fat: r.f * m,
+        servings: r.serv
+      });
+      ["f-name","f-kcal","f-p","f-c","f-f"].forEach(function(id){ el(id).value = ""; });
+      el("f-serv").value = 1;
+      el("scanpanel").hidden = true; el("scanpanel").innerHTML = "";
+      updatePreview();
+      el("f-name").focus();
+    });
+
+    el("export").addEventListener("click", exportBackup);
+    el("import").addEventListener("click", function(){ el("importfile").click(); });
+    el("importfile").addEventListener("change", function(){
+      if(this.files && this.files[0]) importBackup(this.files[0]);
+      this.value = "";
+    });
+
+    window.addEventListener("keydown", function(e){
+      if(e.key === "Escape" && !el("scanview").hidden) closeScanner();
+    });
+  }
+
+  function boot(){
+    var savedTheme = lsGet("ml.theme");
+    if(savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
+    wire();
+    render();
+
+    store = localStore();
+    el("storemode").textContent = store.mode;
+    unsubTargets = store.subscribeTargets(function(t){
+      state.targets = Object.assign({}, DEFAULT_TARGETS, t || {});
+      render();
+    });
+    subscribeDay();
+    refreshRecent();
+  }
+
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
