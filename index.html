@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Macro Ledger</title>
-<meta name="description" content="A daily food ledger for calories, protein, carbs, and fat, with barcode scanning.">
+<meta name="description" content="A daily food ledger for calories, protein, carbs, and fat, with barcode scanning and cloud sync.">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FBFAF6">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#131612">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -109,6 +109,11 @@
   }
   .day .theme:hover{color:var(--ink);}
 
+  .warnbar{
+    background:var(--accent-soft);border-left:3px solid var(--carbs);border-radius:9px;
+    padding:10px 12px;margin-bottom:16px;font-size:12.5px;color:var(--muted);
+  }
+
   .card{
     background:var(--surface);border:1px solid var(--line);border-radius:14px;
     padding:clamp(15px,3.6vw,21px);box-shadow:var(--shadow);margin-bottom:16px;
@@ -148,7 +153,7 @@
 
   /* ---- inputs ---- */
   input, select, button{font:inherit;color:inherit;}
-  input[type=number], input[type=text], select{
+  input[type=number], input[type=text], input[type=url], select{
     width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
     background:var(--paper);color:var(--ink);
   }
@@ -244,6 +249,17 @@
     cursor:pointer;padding:0 2px;text-decoration:underline;
   }
   .foot .linkbtn:hover{filter:brightness(1.12);}
+  .syncpanel{
+    margin:10px auto 0;max-width:420px;padding:12px;background:var(--raised);
+    border-radius:10px;text-align:left;
+  }
+  .syncpanel input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+    background:var(--paper);color:var(--ink);font-size:12.5px;margin-bottom:9px;}
+  .syncpanel .syncrow{display:flex;gap:16px;}
+  .syncpanel p{margin:9px 0 0;font-size:11px;color:var(--faint);line-height:1.55;}
+  .sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--faint);margin-right:5px;vertical-align:middle;}
+  .sync-dot.ok{background:var(--accent);}
+  .sync-dot.err{background:var(--danger);}
 
   .toast{
     position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);
@@ -291,6 +307,11 @@
     <button id="theme" class="theme" aria-label="Toggle light or dark theme" type="button">&#9681;</button>
   </header>
 
+  <div id="localwarn" class="warnbar" hidden>
+    Saving on this device only — iOS can erase this without warning.
+    <button id="setupsync" class="linkbtn" type="button">Set up cloud sync</button>
+  </div>
+
   <section class="card summary" id="summary" aria-live="polite"></section>
 
   <section class="card addcard">
@@ -330,10 +351,19 @@
   <section class="log" id="log"></section>
 
   <footer class="foot">
-    Saved <span id="storemode">on this device</span> &middot; <span id="count">0</span> entries this day<br>
+    <span class="sync-dot" id="syncdot"></span><span id="storemode">starting…</span> &middot; <span id="count">0</span> entries this day<br>
     <button id="export" class="linkbtn" type="button">Export backup</button> &middot;
-    <button id="import" class="linkbtn" type="button">Import backup</button>
+    <button id="import" class="linkbtn" type="button">Import backup</button> &middot;
+    <button id="syncbtn" class="linkbtn" type="button">Sync setup</button>
     <input id="importfile" type="file" accept="application/json,.json" hidden>
+    <div id="syncpanel" class="syncpanel" hidden>
+      <input id="syncfield" type="url" placeholder="https://…firebaseio.com" autocomplete="off" spellcheck="false">
+      <div class="syncrow">
+        <button id="syncsave" class="linkbtn" type="button">Save &amp; reload</button>
+        <button id="syncclear" class="linkbtn" type="button">Turn off on this device</button>
+      </div>
+      <p>Your log is stored here and pulled fresh every time the app opens. The permanent address is set inside the app file; this box only overrides it on this one device.</p>
+    </div>
   </footer>
 </div>
 
@@ -376,6 +406,15 @@
 <script>
 (function(){
   "use strict";
+
+  /* =======================================================================
+     CLOUD SYNC — your Firebase Realtime Database.
+     To move or disable sync, change SYNC_URL below (leave "" for local-only).
+     ======================================================================= */
+  var SYNC_URL = "https://macro-ledger-30712-default-rtdb.firebaseio.com";
+  var SYNC_KEY = "macroledger";
+  /* ======================================================================= */
+
   var MEALS = ["Breakfast","Lunch","Dinner","Snacks"];
   var DEFAULT_TARGETS = {kcal:2000, protein:150, carbs:200, fat:65};
   var ZXING_URL = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
@@ -431,13 +470,23 @@
   function el(id){ return document.getElementById(id); }
   function toast(msg){
     var t = el("toast"); t.textContent = msg; t.hidden = false;
-    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.hidden = true; }, 3000);
+    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.hidden = true; }, 3200);
   }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+  function qs(name){
+    var m = new RegExp("[?&]"+name+"=([^&]+)").exec(location.search || "");
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  function setSync(status, cls){
+    el("storemode").textContent = status;
+    var dot = el("syncdot");
+    dot.className = "sync-dot" + (cls ? " " + cls : "");
+  }
 
   function normEntry(e){
+    e = e || {};
     var s = Number(e.servings);
     return {
       id: e.id || rid(),
@@ -449,10 +498,6 @@
       fat: clampNum(e.fat),
       servings: isFinite(s) && s>0 ? Math.round(s*100)/100 : 1
     };
-  }
-  function normDay(data, date){
-    var entries = (data && Array.isArray(data.entries)) ? data.entries.map(normEntry) : [];
-    return {date:date, entries:entries};
   }
   function totals(entries){
     return entries.reduce(function(a,e){
@@ -476,13 +521,71 @@
     return {date:state.date, entries:[]};
   }
 
-  /* ---------- storage (this device) ---------- */
+  /* ---------- local mirror (cache + offline + Export backup) ---------- */
+  function readLocalMirror(){
+    var days = {};
+    try{
+      for(var i=0;i<localStorage.length;i++){
+        var k = localStorage.key(i);
+        if(k && k.indexOf("ml.day.")===0){
+          var date = k.slice(7);
+          var v = JSON.parse(localStorage.getItem(k));
+          days[date] = { entries: (v && v.entries || []).map(normEntry) };
+        }
+      }
+    }catch(e){}
+    var targets = null;
+    try{ var t = lsGet("ml.targets"); if(t) targets = JSON.parse(t); }catch(e){}
+    return { days: days, targets: targets };
+  }
+  function mirrorToLocal(cache){
+    try{
+      Object.keys(cache.days).forEach(function(k){
+        lsSet("ml.day."+k, JSON.stringify({date:k, entries:cache.days[k].entries}));
+      });
+      if(cache.targets) lsSet("ml.targets", JSON.stringify(cache.targets));
+    }catch(e){}
+  }
+  function normalizeBlob(d){
+    d = (d && typeof d === "object") ? d : {};
+    var rawDays = (d.days && typeof d.days === "object") ? d.days : {};
+    var days = {};
+    Object.keys(rawDays).forEach(function(k){
+      var e = rawDays[k];
+      var list = (e && e.entries) ? e.entries : e;
+      if(!Array.isArray(list)){
+        list = (list && typeof list === "object")
+          ? Object.keys(list).map(function(kk){ return list[kk]; }) : [];
+      }
+      list = list.filter(Boolean).map(normEntry);
+      if(list.length) days[k] = { entries: list };
+    });
+    var targets = (d.targets && typeof d.targets === "object") ? d.targets : null;
+    return { days: days, targets: targets };
+  }
+  function collectRecent(dayDatas){
+    var seen = {}, out = [];
+    for(var i=0;i<dayDatas.length;i++){
+      var es = (dayDatas[i] && dayDatas[i].entries) || [];
+      for(var j=es.length-1;j>=0;j--){
+        var e = normEntry(es[j]);
+        var key = e.name.trim().toLowerCase();
+        if(!key || seen[key]) continue;
+        seen[key] = 1; out.push(e);
+        if(out.length >= 10) return out;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- storage: local only ---------- */
   function localStore(){
     return {
-      mode: "on this device",
+      init: function(){ return Promise.resolve(); },
+      refresh: function(){},
       subscribeDay: function(date, cb){
         var raw = lsGet("ml.day."+date);
-        cb(raw ? normDay(JSON.parse(raw), date) : null);
+        cb(raw ? {date:date, entries:(JSON.parse(raw).entries||[]).map(normEntry)} : null);
         return function(){};
       },
       saveDay: function(day){
@@ -509,22 +612,95 @@
       }
     };
   }
-  function collectRecent(dayDatas){
-    var seen = {}, out = [];
-    for(var i=0;i<dayDatas.length;i++){
-      var es = (dayDatas[i] && dayDatas[i].entries) || [];
-      for(var j=es.length-1;j>=0;j--){
-        var e = normEntry(es[j]);
-        var key = e.name.trim().toLowerCase();
-        if(!key || seen[key]) continue;
-        seen[key] = 1; out.push(e);
-        if(out.length >= 10) return out;
-      }
+
+  /* ---------- storage: cloud (Firebase RTDB REST) ---------- */
+  function remoteStore(base){
+    var url = String(base).trim().replace(/\/+$/,"").replace(/\.json$/i,"") + "/" + SYNC_KEY + ".json";
+    var cache = readLocalMirror();
+    var dayCbs = {}, targetCbs = [];
+    var dirty = false;
+
+    function fireDate(date){
+      (dayCbs[date]||[]).forEach(function(cb){
+        var d = cache.days[date];
+        cb(d ? {date:date, entries:d.entries.map(normEntry)} : null);
+      });
     }
-    return out;
+    function fireAll(){ Object.keys(dayCbs).forEach(fireDate); targetCbs.forEach(function(cb){ cb(cache.targets); }); }
+
+    function pull(){
+      return fetch(url, {cache:"no-store"}).then(function(r){
+        if(!r.ok) throw new Error("read "+r.status);
+        return r.json();
+      }).then(function(data){
+        if(dirty){ return doPush().then(function(){ dirty = false; return cache; }); }
+        var remote = normalizeBlob(data);
+        var remoteEmpty = Object.keys(remote.days).length === 0 && !remote.targets;
+        var localHasData = Object.keys(cache.days).length > 0 || !!cache.targets;
+        if(remoteEmpty && localHasData){
+          // first sync on a device that already had a local log — seed the cloud with it
+          return doPush().then(function(){ return cache; });
+        }
+        cache = remote;
+        mirrorToLocal(cache);
+        setSync("saved to your cloud", "ok");
+        return cache;
+      });
+    }
+    function doPush(){
+      return fetch(url, {
+        method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({days:cache.days, targets:cache.targets})
+      }).then(function(r){
+        if(!r.ok) throw new Error("save "+r.status);
+        setSync("saved to your cloud", "ok");
+      });
+    }
+    function push(){
+      mirrorToLocal(cache);
+      return doPush().catch(function(e){
+        dirty = true;
+        setSync("offline — saved on this device, will sync later", "err");
+        throw e;
+      });
+    }
+
+    return {
+      init: function(){
+        setSync("connecting…", "");
+        setInterval(function(){
+          if(document.visibilityState === "visible") pull().then(fireAll).catch(function(){});
+        }, 20000);
+        return pull().then(function(){ fireAll(); });
+      },
+      refresh: function(){ return pull().then(fireAll).catch(function(){}); },
+      subscribeDay: function(date, cb){
+        (dayCbs[date] = dayCbs[date] || []).push(cb);
+        var d = cache.days[date];
+        cb(d ? {date:date, entries:d.entries.map(normEntry)} : null);
+        return function(){ dayCbs[date] = (dayCbs[date]||[]).filter(function(f){ return f!==cb; }); };
+      },
+      saveDay: function(day){
+        var entries = day.entries.map(normEntry);
+        if(entries.length === 0) delete cache.days[day.date];
+        else cache.days[day.date] = { entries: entries };
+        return push();
+      },
+      subscribeTargets: function(cb){
+        targetCbs.push(cb);
+        cb(cache.targets);
+        return function(){ targetCbs = targetCbs.filter(function(f){ return f!==cb; }); };
+      },
+      saveTargets: function(t){ cache.targets = t; return push(); },
+      recent: function(){
+        var keys = Object.keys(cache.days).sort().reverse().slice(0,21);
+        return Promise.resolve(collectRecent(keys.map(function(k){ return cache.days[k]; })));
+      }
+    };
   }
 
-  /* ---------- actions ---------- */
+  /* ---------- app-level store wiring ---------- */
   function subscribeDay(){
     if(unsubDay) unsubDay();
     unsubDay = store.subscribeDay(state.date, function(day){
@@ -545,7 +721,7 @@
     day.entries.push(normEntry(Object.assign({id:rid()}, data)));
     state.day = day;
     render();
-    Promise.resolve(store.saveDay(day)).catch(function(){ toast("Couldn't save — try again"); });
+    Promise.resolve(store.saveDay(day)).catch(function(){ toast("Saved on this device — will sync when back online"); });
     refreshRecent();
   }
   function deleteEntry(id){
@@ -553,12 +729,12 @@
     day.entries = day.entries.filter(function(e){ return e.id !== id; });
     state.day = day;
     render();
-    Promise.resolve(store.saveDay(day)).catch(function(){ toast("Couldn't save — try again"); });
+    Promise.resolve(store.saveDay(day)).catch(function(){ toast("Saved on this device — will sync when back online"); });
   }
   function saveTargets(t){
     state.targets = t;
     render();
-    Promise.resolve(store.saveTargets(t)).catch(function(){ toast("Couldn't save targets"); });
+    Promise.resolve(store.saveTargets(t)).catch(function(){ toast("Saved on this device — will sync when back online"); });
   }
   function refreshRecent(){
     Promise.resolve(store.recent()).then(function(list){
@@ -572,7 +748,7 @@
     try{
       for(var i=0;i<localStorage.length;i++){
         var k = localStorage.key(i);
-        if(k && k.indexOf("ml.")===0) data[k] = localStorage.getItem(k);
+        if(k && k.indexOf("ml.")===0 && k !== "ml.syncurl") data[k] = localStorage.getItem(k);
       }
     }catch(e){}
     if(!Object.keys(data).length){ toast("Nothing logged yet to back up"); return; }
@@ -599,16 +775,8 @@
         if(k.indexOf("ml.") === 0 && typeof d[k] === "string"){ lsSet(k, d[k]); n++; }
       });
       if(!n){ toast("Backup had no entries to import"); return; }
-      state.userActed = true;
-      var st = lsGet("ml.theme"); if(st) document.documentElement.setAttribute("data-theme", st);
-      if(unsubTargets) unsubTargets();
-      unsubTargets = store.subscribeTargets(function(t){
-        state.targets = Object.assign({}, DEFAULT_TARGETS, t || {}); render();
-      });
-      subscribeDay();
-      refreshRecent();
-      render();
-      toast("Imported " + n + " item" + (n===1?"":"s"));
+      toast("Imported " + n + " item" + (n===1?"":"s") + " — reloading");
+      setTimeout(function(){ location.reload(); }, 900);
     };
     r.readAsText(file);
   }
@@ -661,7 +829,6 @@
         });
       });
     };
-
     var startZXing = function(){
       return loadScript(ZXING_URL).then(function(){
         scan.zxing = new window.ZXing.BrowserMultiFormatReader();
@@ -675,7 +842,6 @@
     var attempt = ("BarcodeDetector" in window) ? startNative() : startZXing();
     attempt.catch(function(err){
       if(("BarcodeDetector" in window) && !scan.zxing){
-        // native path failed to start — fall back to the library
         cleanupStream();
         startZXing().catch(function(e2){ closeScanner(); toast(scanErr(e2)); });
       } else {
@@ -705,9 +871,9 @@
   }
   function lookupProduct(code){
     toast("Looking up " + code + "…");
-    var url = OFF_API + encodeURIComponent(code) +
+    var u = OFF_API + encodeURIComponent(code) +
       ".json?fields=product_name,brands,nutriments,serving_size,serving_quantity";
-    fetch(url, { headers:{ "Accept":"application/json" } })
+    fetch(u, { headers:{ "Accept":"application/json" } })
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j || j.status !== 1 || !j.product){
@@ -751,7 +917,6 @@
       carbs: round1(nutr(n, p, "carbohydrates")),
       fat: round1(nutr(n, p, "fat"))
     };
-
     var name = [p.brands, p.product_name].filter(Boolean).join(" — ").replace(/\s+/g, " ").trim().slice(0, 120);
     el("f-name").value = name || ("Item " + code);
     el("f-kcal").value = base.kcal || "";
@@ -820,7 +985,6 @@
       + '<div class="mnote'+(over?" over":"")+'">'+note+'</div>'
     + '</div>';
   }
-
   function renderSummary(){
     var t = totals(currentEntries());
     var tg = state.targets;
@@ -873,12 +1037,10 @@
   function tgtInput(k, label, val){
     return '<label>'+label+'<input id="tgt-'+k+'" type="number" min="0" step="'+(k==="kcal"?"10":"1")+'" value="'+val+'"></label>';
   }
-
   function renderLog(){
     var entries = currentEntries();
     var sample = showingSample();
     var html = "";
-
     if(sample){
       html += '<div class="sample-note"><b>Sample day.</b> Your ledger for today is empty — add a food and this clears.</div>';
     }
@@ -898,11 +1060,9 @@
       });
     }
     el("log").innerHTML = html;
-
     el("log").querySelectorAll("button.del").forEach(function(b){
       b.addEventListener("click", function(){ deleteEntry(b.getAttribute("data-id")); });
     });
-
     el("count").textContent = sample ? 0 : entries.length;
   }
   function entryRow(e, sample){
@@ -918,13 +1078,11 @@
       + (sample ? '<span></span>' : '<button class="del" type="button" data-id="'+e.id+'" aria-label="Remove '+esc(e.name)+'">&times;</button>')
     + '</li>';
   }
-
   function renderHeader(){
     var p = prettyDate(state.date);
     el("wd").textContent = p.wd;
     el("dt").innerHTML = esc(p.md) + (p.rel ? ' <span class="rel">&middot; '+p.rel+'</span>' : "");
   }
-
   function renderRecent(){
     var box = el("recent");
     if(!state.recent.length){ box.hidden = true; box.innerHTML = ""; return; }
@@ -948,7 +1106,6 @@
       });
     });
   }
-
   function render(){ renderHeader(); renderSummary(); renderLog(); }
 
   /* ---------- wiring ---------- */
@@ -986,12 +1143,9 @@
       var r = readForm();
       var m = r.serv;
       addEntry({
-        name: name,
-        meal: el("f-meal").value,
+        name: name, meal: el("f-meal").value,
         kcal: Math.round(r.kcal * m),
-        protein: r.p * m,
-        carbs: r.c * m,
-        fat: r.f * m,
+        protein: r.p * m, carbs: r.c * m, fat: r.f * m,
         servings: r.serv
       });
       ["f-name","f-kcal","f-p","f-c","f-f"].forEach(function(id){ el(id).value = ""; });
@@ -1008,9 +1162,34 @@
       this.value = "";
     });
 
+    var openSync = function(){ el("syncpanel").hidden = false; el("syncpanel").scrollIntoView({block:"center"}); };
+    el("syncbtn").addEventListener("click", function(){ el("syncpanel").hidden = !el("syncpanel").hidden; });
+    if(el("setupsync")) el("setupsync").addEventListener("click", openSync);
+    el("syncsave").addEventListener("click", function(){
+      var v = el("syncfield").value.trim();
+      if(v) lsSet("ml.syncurl", v); else lsDel("ml.syncurl");
+      location.reload();
+    });
+    el("syncclear").addEventListener("click", function(){
+      lsDel("ml.syncurl"); location.reload();
+    });
+
+    document.addEventListener("visibilitychange", function(){
+      if(document.visibilityState === "visible" && store && store.refresh) store.refresh();
+    });
     window.addEventListener("keydown", function(e){
       if(e.key === "Escape" && !el("scanview").hidden) closeScanner();
     });
+  }
+
+  function afterStore(){
+    if(unsubTargets) unsubTargets();
+    unsubTargets = store.subscribeTargets(function(t){
+      state.targets = Object.assign({}, DEFAULT_TARGETS, t || {});
+      render();
+    });
+    subscribeDay();
+    refreshRecent();
   }
 
   function boot(){
@@ -1019,14 +1198,23 @@
     wire();
     render();
 
-    store = localStore();
-    el("storemode").textContent = store.mode;
-    unsubTargets = store.subscribeTargets(function(t){
-      state.targets = Object.assign({}, DEFAULT_TARGETS, t || {});
-      render();
-    });
-    subscribeDay();
-    refreshRecent();
+    var syncBase = (SYNC_URL || qs("sync") || lsGet("ml.syncurl") || "").trim();
+    if(el("syncfield")) el("syncfield").value = syncBase;
+
+    if(syncBase){
+      el("localwarn").hidden = true;
+      store = remoteStore(syncBase);
+      afterStore();
+      store.init().catch(function(){
+        setSync("offline — showing this device's copy", "err");
+        toast("Can't reach the cloud right now — it'll sync when you're back online");
+      });
+    } else {
+      store = localStore();
+      setSync("on this device only", "err");
+      el("localwarn").hidden = false;
+      afterStore();
+    }
   }
 
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
